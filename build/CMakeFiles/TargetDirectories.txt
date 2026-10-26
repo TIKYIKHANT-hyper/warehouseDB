@@ -1,0 +1,3 @@
+/Users/tikyikhant/warehouseDB/build/CMakeFiles/etl_pipeline.dir
+/Users/tikyikhant/warehouseDB/build/CMakeFiles/edit_cache.dir
+/Users/tikyikhant/warehouseDB/build/CMakeFiles/rebuild_cache.dir

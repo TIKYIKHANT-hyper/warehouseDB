@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: your_password
+      POSTGRES_DB: MyfirstDW
+    ports:
+      - "5432:5432"
+    volumes:
+      # Automatically runs SQL scripts in this folder on first boot
+      - ./schema:/docker-entrypoint-initdb.d 
+
