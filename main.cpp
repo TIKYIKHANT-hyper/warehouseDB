@@ -1,40 +1,63 @@
-#include <iostream>
-#include <cstdlib>
-#include <libpq-fe.h>
 #include "parser.h"
 #include "database.h"
+#include <cstdio>
+#include <cstdlib>
 
 int main() {
-    // Ensure this matches your Docker setup credentials
-    const char* conninfo = "dbname=MyfirstDW user=postgres password=your_password host=127.0.0.1 port=5432";
-    
-    PGconn* conn = PQconnectdb(conninfo);
-    int is_connected = (PQstatus(conn) == CONNECTION_OK);
-    
-    if (!is_connected) {
-        std::cerr << "Connection to database failed: " << PQerrorMessage(conn) << "\n";
-    } else {
-        std::cout << "Successfully connected to the database.\n";
+    int record_count = 0;
+    const char* csv_filepath = "inventory-levels.csv";
+
+    printf("==================================================\n");
+    printf("Starting C++ ETL Pipeline (Supply Chain Inventory)\n");
+    printf("==================================================\n");
+
+    // Phase 1: Extract (Parser Developer's Code)
+    InventoryRecord* records = parse_csv(csv_filepath, &record_count);
+    int extraction_success = (records != nullptr && record_count > 0);
+
+    if (extraction_success) {
+        printf("[SUCCESS] Parsed %d rows into dynamic heap memory.\n\n", record_count);
         
-        int record_count = 0;
+        // Phase 2: Connect
+        char conninfo[256];
+        db_build_conninfo(conninfo, sizeof(conninfo));
         
-        // Extract: Parse the CSV file into a dynamically allocated array
-        InventoryRecord* records = parse_csv("inventory-levels.csv", &record_count);
-        
-        int has_records = (records != NULL && record_count > 0);
-        
-        if (has_records) {
-            std::cout << "Successfully parsed " << record_count << " rows from CSV.\n";
+        PGconn* conn = db_connect(conninfo, DB_DEFAULT_RETRIES);
+        int is_connected = (conn != nullptr);
+
+        if (is_connected) {
             
-            // Load: Insert the records into PostgreSQL
-            load_to_db(conn, records, record_count);
+            // Phase 3: Check Schema & Load (Xavier's Code)
+            int schema_valid = (db_check_schema(conn) == DB_OK);
             
-            // Free the contiguous memory block
-            free(records);
+            if (schema_valid) {
+                LoadReport report;
+                
+                // Set clear_staging to 1 so you can safely run the program multiple times
+                int load_status = db_load_records(conn, records, record_count, DB_DEFAULT_BATCH_SIZE, 1, &report);
+                
+                if (load_status == DB_OK) {
+                    db_print_report(&report);
+                    
+                    // Phase 4: Transform 
+                    db_transform_to_star(conn);
+                } else {
+                    printf("[ERROR] Database load failed. Check error logs.\n");
+                }
+            }
+            
+            db_disconnect(conn);
         }
+    } else {
+        printf("[FAILED] Extraction aborted. Check your CSV filepath.\n");
     }
-    
-    PQfinish(conn);
+
+    // Phase 5: Cleanup
+    if (records != nullptr) {
+        free(records);
+        printf("\n[CLEANUP] Heap memory freed. Pipeline terminated.\n");
+    }
+
     return 0;
 }
 
