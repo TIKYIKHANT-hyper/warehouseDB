@@ -7,16 +7,29 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
-    h1 { margin-top: 0; font-size: 1.6rem; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+    .header-bar h1 { margin: 0; font-size: 1.6rem; }
+    .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    #csvFileInput { color: #94a3b8; font-size: 0.85rem; }
+    #etl-log { display: none; background: #020617; color: #4ade80; padding: 14px; border-radius: 8px; border: 1px solid #334155; font-size: 0.85rem; overflow-x: auto; margin-bottom: 20px; }
     .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
     .card { background: #1e293b; padding: 16px; border-radius: 8px; border: 1px solid #334155; }
     .card span { font-size: 0.85rem; color: #94a3b8; display: block; }
     .card strong { font-size: 1.5rem; color: #38bdf8; }
     .card.alert strong { color: #f87171; }
     .panel { background: #1e293b; padding: 20px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 24px; }
-    .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+    .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; background: #0f172a; padding: 14px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 16px; }
+    .filter-group { display: flex; flex-direction: column; gap: 4px; }
+    .filter-group label { font-size: 0.75rem; color: #94a3b8; }
+    .filter-group input, .filter-group select { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 5px; padding: 6px 8px; font-size: 0.85rem; }
+    .filter-actions { display: flex; gap: 8px; align-items: flex-end; }
     button { background: #38bdf8; color: #0f172a; border: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
     button.active { background: #f87171; color: #fff; }
+    button.secondary { background: #334155; color: #e2e8f0; }
+    #uploadEtlBtn { background: #f59e0b; color: #0f172a; }
+    #runEtlBtn { background: #10b981; color: #0f172a; }
     table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
     th, td { text-align: left; padding: 10px; border-bottom: 1px solid #334155; }
     th { color: #94a3b8; }
@@ -26,7 +39,16 @@
   </style>
 </head>
 <body>
-  <h1>warehouseDB — Star Schema Dashboard</h1>
+  <div class="header-bar">
+    <h1>warehouseDB — Star Schema Dashboard</h1>
+    <div class="header-actions">
+      <input type="file" id="csvFileInput" accept=".csv" />
+      <button id="uploadEtlBtn">⬆ Upload CSV & Run</button>
+      <button id="runEtlBtn">▶ Run Default ETL</button>
+    </div>
+  </div>
+
+  <pre id="etl-log"></pre>
 
   <div class="kpis">
     <div class="card"><span>Fact Records</span><strong id="kpi-records">-</strong></div>
@@ -43,9 +65,70 @@
 
   <div class="panel">
     <div class="controls">
-      <h3>Inventory Records (Top 100)</h3>
+      <h3 style="margin: 0;">Inventory Records (<span id="row-count">0</span> shown)</h3>
       <button id="toggleAlerts">Show Below Reorder Only</button>
     </div>
+
+    <div class="filter-grid">
+      <div class="filter-group">
+        <label for="f-sku">SKU Search</label>
+        <input type="text" id="f-sku" placeholder="e.g. SKU-101" />
+      </div>
+      <div class="filter-group">
+        <label for="f-category">Category</label>
+        <select id="f-category"><option value="">All Categories</option></select>
+      </div>
+      <div class="filter-group">
+        <label for="f-warehouse">Warehouse</label>
+        <select id="f-warehouse"><option value="">All Warehouses</option></select>
+      </div>
+      <div class="filter-group">
+        <label for="f-date-from">Date From</label>
+        <input type="date" id="f-date-from" />
+      </div>
+      <div class="filter-group">
+        <label for="f-date-to">Date To</label>
+        <input type="date" id="f-date-to" />
+      </div>
+      <div class="filter-group">
+        <label for="f-min-stock">Min Stock</label>
+        <input type="number" id="f-min-stock" placeholder="0" />
+      </div>
+      <div class="filter-group">
+        <label for="f-max-stock">Max Stock</label>
+        <input type="number" id="f-max-stock" placeholder="Any" />
+      </div>
+      <div class="filter-group">
+        <label for="f-min-reorder">Min Reorder Pt</label>
+        <input type="number" id="f-min-reorder" placeholder="0" />
+      </div>
+      <div class="filter-group">
+        <label for="f-min-value">Min Value ($)</label>
+        <input type="number" id="f-min-value" placeholder="0" />
+      </div>
+      <div class="filter-group">
+        <label for="f-sort-by">Sort By</label>
+        <select id="f-sort-by">
+          <option value="date">Date</option>
+          <option value="value">Stock Value</option>
+          <option value="stock">Current Stock</option>
+          <option value="reorder">Reorder Pt</option>
+          <option value="sku">SKU</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="f-sort-dir">Order</label>
+        <select id="f-sort-dir">
+          <option value="desc">Descending</option>
+          <option value="asc">Ascending</option>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button id="applyFiltersBtn" style="flex: 1;">Filter</button>
+        <button id="resetFiltersBtn" class="secondary">Reset</button>
+      </div>
+    </div>
+
     <table>
       <thead>
         <tr>
@@ -59,9 +142,20 @@
 
   <script>
     let alertsOnly = false;
+    let warehouseChartInstance = null;
+
+    async function loadFilterOptions() {
+      const data = await fetch('/api/filters').then(r => r.json());
+      const catSelect = document.getElementById('f-category');
+      const whSelect = document.getElementById('f-warehouse');
+
+      catSelect.innerHTML = '<option value="">All Categories</option>' +
+        data.categories.map(c => `<option value="${c}">${c}</option>`).join('');
+      whSelect.innerHTML = '<option value="">All Warehouses</option>' +
+        data.warehouses.map(w => `<option value="${w}">${w}</option>`).join('');
+    }
 
     async function loadDashboard() {
-      // 1. Load KPIs
       const summary = await fetch('/api/summary').then(r => r.json());
       document.getElementById('kpi-records').textContent = summary.total_records;
       document.getElementById('kpi-products').textContent = summary.total_products;
@@ -69,9 +163,11 @@
       document.getElementById('kpi-value').textContent = '$' + Number(summary.total_stock_value).toLocaleString();
       document.getElementById('kpi-alerts').textContent = summary.below_reorder_count;
 
-      // 2. Load Chart
       const warehouses = await fetch('/api/warehouses').then(r => r.json());
-      new Chart(document.getElementById('warehouseChart'), {
+      if (warehouseChartInstance) {
+        warehouseChartInstance.destroy();
+      }
+      warehouseChartInstance = new Chart(document.getElementById('warehouseChart'), {
         type: 'bar',
         data: {
           labels: warehouses.map(w => w.warehouse_code),
@@ -90,13 +186,30 @@
         }
       });
 
-      loadTable();
+      await loadFilterOptions();
+      await loadTable();
     }
 
     async function loadTable() {
-      const rows = await fetch(`/api/inventory?alertsOnly=${alertsOnly}`).then(r => r.json());
+      const params = new URLSearchParams({
+        alertsOnly: String(alertsOnly),
+        sku: document.getElementById('f-sku').value,
+        category: document.getElementById('f-category').value,
+        warehouse: document.getElementById('f-warehouse').value,
+        dateFrom: document.getElementById('f-date-from').value,
+        dateTo: document.getElementById('f-date-to').value,
+        minStock: document.getElementById('f-min-stock').value,
+        maxStock: document.getElementById('f-max-stock').value,
+        minReorder: document.getElementById('f-min-reorder').value,
+        minValue: document.getElementById('f-min-value').value,
+        sortBy: document.getElementById('f-sort-by').value,
+        sortDir: document.getElementById('f-sort-dir').value,
+      });
+
+      const rows = await fetch(`/api/inventory?${params.toString()}`).then(r => r.json());
+      document.getElementById('row-count').textContent = rows.length;
       const tbody = document.getElementById('table-body');
-      tbody.innerHTML = rows.map(r => `
+      tbody.innerHTML = rows.length ? rows.map(r => `
         <tr>
           <td>${r.date}</td>
           <td>${r.sku_id}</td>
@@ -107,14 +220,86 @@
           <td>$${Number(r.stock_value).toLocaleString()}</td>
           <td><span class="badge ${r.below_reorder ? 'low' : 'ok'}">${r.below_reorder ? 'REORDER' : 'OK'}</span></td>
         </tr>
-      `).join('');
+      `).join('') : '<tr><td colspan="8" style="text-align:center; color:#94a3b8;">No matching records found.</td></tr>';
     }
+
+    document.getElementById('applyFiltersBtn').addEventListener('click', loadTable);
+
+    document.getElementById('resetFiltersBtn').addEventListener('click', () => {
+      ['f-sku', 'f-category', 'f-warehouse', 'f-date-from', 'f-date-to', 'f-min-stock', 'f-max-stock', 'f-min-reorder', 'f-min-value']
+        .forEach(id => document.getElementById(id).value = '');
+      document.getElementById('f-sort-by').value = 'date';
+      document.getElementById('f-sort-dir').value = 'desc';
+      alertsOnly = false;
+      const alertBtn = document.getElementById('toggleAlerts');
+      alertBtn.classList.remove('active');
+      alertBtn.textContent = 'Show Below Reorder Only';
+      loadTable();
+    });
 
     document.getElementById('toggleAlerts').addEventListener('click', (e) => {
       alertsOnly = !alertsOnly;
       e.target.classList.toggle('active', alertsOnly);
       e.target.textContent = alertsOnly ? 'Showing Below Reorder Only' : 'Show Below Reorder Only';
       loadTable();
+    });
+
+    document.getElementById('runEtlBtn').addEventListener('click', async (e) => {
+      const btn = e.target;
+      const logBox = document.getElementById('etl-log');
+      btn.disabled = true;
+      btn.textContent = 'Running C++ ETL...';
+      logBox.style.display = 'block';
+      logBox.style.color = '#94a3b8';
+      logBox.textContent = 'Executing ./build/warehouseDB ...';
+
+      try {
+        const res = await fetch('/api/run-etl', { method: 'POST' });
+        const data = await res.json();
+        logBox.style.color = data.success ? '#4ade80' : '#f87171';
+        logBox.textContent = data.output || 'Completed with no output.';
+        if (data.success) await loadDashboard();
+      } catch (err) {
+        logBox.style.color = '#f87171';
+        logBox.textContent = 'Request failed: ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '▶ Run Default ETL';
+      }
+    });
+
+    document.getElementById('uploadEtlBtn').addEventListener('click', async (e) => {
+      const fileInput = document.getElementById('csvFileInput');
+      const btn = e.target;
+      const logBox = document.getElementById('etl-log');
+
+      if (!fileInput.files.length) {
+        alert('Please choose a .csv file first.');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('csvFile', fileInput.files[0]);
+
+      btn.disabled = true;
+      btn.textContent = 'Uploading & Running...';
+      logBox.style.display = 'block';
+      logBox.style.color = '#94a3b8';
+      logBox.textContent = `Uploading ${fileInput.files[0].name} and executing C++ ETL...`;
+
+      try {
+        const res = await fetch('/api/upload-etl', { method: 'POST', body: formData });
+        const data = await res.json();
+        logBox.style.color = data.success ? '#4ade80' : '#f87171';
+        logBox.textContent = data.output || 'Completed with no output.';
+        if (data.success) await loadDashboard();
+      } catch (err) {
+        logBox.style.color = '#f87171';
+        logBox.textContent = 'Upload failed: ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⬆ Upload CSV & Run';
+      }
     });
 
     loadDashboard();

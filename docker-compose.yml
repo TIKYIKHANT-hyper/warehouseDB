@@ -1,13 +1,38 @@
 services:
   db:
     image: postgres:15
+    restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: your_password
-      POSTGRES_DB: MyfirstDW
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "5432:5432"
     volumes:
-      # Automatically runs SQL scripts in this folder on first boot
-      - ./schema:/docker-entrypoint-initdb.d 
+      - pgdata:/var/lib/postgresql/data
+      - ./schema:/docker-entrypoint-initdb.d
+
+  app:
+    build: .
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "3000:3000"
+    environment:
+      # Inside Docker, the database hostname is the service name "db"
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # Standard libpq env vars for your C++ binary
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: ${DB_NAME}
+      PGUSER: ${DB_USER}
+      PGPASSWORD: ${DB_PASSWORD}
+
+volumes:
+  pgdata:
 

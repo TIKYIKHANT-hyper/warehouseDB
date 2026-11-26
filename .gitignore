@@ -7,3 +7,7 @@ build/
 
 #node modules
 ui/node_modules/
+ui/uploads/
+
+#credits
+.env

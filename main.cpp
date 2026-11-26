@@ -3,11 +3,13 @@
 #include <cstdio>
 #include <cstdlib>
 
-int main() {
+int main(int argc, char* argv[]) {
     int record_count = 0;
-    const char* csv_filepath = "inventory-levels.csv";
+    int exit_code = 1;
+    const char* csv_filepath = (argc > 1) ? argv[1] : "inventory-levels.csv";
 
     printf("Starting C++ ETL Pipeline (Supply Chain Inventory)\n");
+    printf("Source CSV: %s\n", csv_filepath);
 
     // Phase 1: Extract (Parser Developer's Code)
     InventoryRecord* records = parse_csv(csv_filepath, &record_count);
@@ -31,7 +33,7 @@ int main() {
             if (schema_valid) {
                 LoadReport report;
                 
-                // Set clear_staging to 1 so you can safely run the program multiple times
+                // clear_staging is 1, so uploading a new CSV cleanly replaces old staging data
                 int load_status = db_load_records(conn, records, record_count, DB_DEFAULT_BATCH_SIZE, 1, &report);
                 
                 if (load_status == DB_OK) {
@@ -39,6 +41,7 @@ int main() {
                     
                     // Phase 4: Transform 
                     db_transform_to_star(conn);
+                    exit_code = 0;
                 } else {
                     printf("[ERROR] Database load failed. Check error logs.\n");
                 }
@@ -56,6 +59,6 @@ int main() {
         printf("\n[CLEANUP] Heap memory freed. Pipeline terminated.\n");
     }
 
-    return 0;
+    return exit_code;
 }
 
