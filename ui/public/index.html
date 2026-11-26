@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>warehouseDB — Supply Chain Analytics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
+    h1 { margin-top: 0; font-size: 1.6rem; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card { background: #1e293b; padding: 16px; border-radius: 8px; border: 1px solid #334155; }
+    .card span { font-size: 0.85rem; color: #94a3b8; display: block; }
+    .card strong { font-size: 1.5rem; color: #38bdf8; }
+    .card.alert strong { color: #f87171; }
+    .panel { background: #1e293b; padding: 20px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 24px; }
+    .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    button { background: #38bdf8; color: #0f172a; border: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    button.active { background: #f87171; color: #fff; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; }
+    .badge { padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .badge.ok { background: #064e3b; color: #34d399; }
+    .badge.low { background: #7f1d1d; color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <h1>warehouseDB — Star Schema Dashboard</h1>
+
+  <div class="kpis">
+    <div class="card"><span>Fact Records</span><strong id="kpi-records">-</strong></div>
+    <div class="card"><span>Unique Products</span><strong id="kpi-products">-</strong></div>
+    <div class="card"><span>Warehouses</span><strong id="kpi-warehouses">-</strong></div>
+    <div class="card"><span>Total Stock Value</span><strong id="kpi-value">-</strong></div>
+    <div class="card alert"><span>Below Reorder</span><strong id="kpi-alerts">-</strong></div>
+  </div>
+
+  <div class="panel">
+    <h3>Stock Value by Warehouse</h3>
+    <canvas id="warehouseChart" height="90"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="controls">
+      <h3>Inventory Records (Top 100)</h3>
+      <button id="toggleAlerts">Show Below Reorder Only</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th><th>SKU</th><th>Category</th><th>Warehouse</th>
+          <th>Stock</th><th>Reorder Pt</th><th>Value ($)</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <script>
+    let alertsOnly = false;
+
+    async function loadDashboard() {
+      // 1. Load KPIs
+      const summary = await fetch('/api/summary').then(r => r.json());
+      document.getElementById('kpi-records').textContent = summary.total_records;
+      document.getElementById('kpi-products').textContent = summary.total_products;
+      document.getElementById('kpi-warehouses').textContent = summary.total_warehouses;
+      document.getElementById('kpi-value').textContent = '$' + Number(summary.total_stock_value).toLocaleString();
+      document.getElementById('kpi-alerts').textContent = summary.below_reorder_count;
+
+      // 2. Load Chart
+      const warehouses = await fetch('/api/warehouses').then(r => r.json());
+      new Chart(document.getElementById('warehouseChart'), {
+        type: 'bar',
+        data: {
+          labels: warehouses.map(w => w.warehouse_code),
+          datasets: [{
+            label: 'Total Stock Value ($)',
+            data: warehouses.map(w => Number(w.total_value)),
+            backgroundColor: '#38bdf8'
+          }]
+        },
+        options: {
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+            x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+          }
+        }
+      });
+
+      loadTable();
+    }
+
+    async function loadTable() {
+      const rows = await fetch(`/api/inventory?alertsOnly=${alertsOnly}`).then(r => r.json());
+      const tbody = document.getElementById('table-body');
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${r.date}</td>
+          <td>${r.sku_id}</td>
+          <td>${r.category}</td>
+          <td>${r.warehouse_code}</td>
+          <td>${r.current_stock}</td>
+          <td>${r.reorder_point}</td>
+          <td>$${Number(r.stock_value).toLocaleString()}</td>
+          <td><span class="badge ${r.below_reorder ? 'low' : 'ok'}">${r.below_reorder ? 'REORDER' : 'OK'}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('toggleAlerts').addEventListener('click', (e) => {
+      alertsOnly = !alertsOnly;
+      e.target.classList.toggle('active', alertsOnly);
+      e.target.textContent = alertsOnly ? 'Showing Below Reorder Only' : 'Show Below Reorder Only';
+      loadTable();
+    });
+
+    loadDashboard();
+  </script>
+</body>
+</html>
+

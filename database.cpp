@@ -1,20 +1,3 @@
-/*
- * database.cpp - PostgreSQL interfacing layer (libpq)
- * Author: Xavier Suarez (role 3: C++ Database Interfacing)
- *
- * Responsibilities:
- *   1. Open / check / restore the connection (PQconnectdb, PQstatus, PQreset)
- *   2. Verify that the schema created by schema/ scripts exists
- *   3. Validate every InventoryRecord before sending it
- *   4. Convert the struct array into parameterized bulk INSERT statements
- *      (one statement per batch, all inside one transaction)
- *   5. Classify errors by SQLSTATE (network, schema, data, other)
- *   6. Move staging data into the Star Schema
- *
- * Rules: no std::vector, no break/continue/goto, flag-controlled loops,
- * one return per function, dynamic memory with malloc/free.
- */
-
 #ifdef _MSC_VER
 #define _CRT_SECURE_NO_WARNINGS   /* getenv / snprintf portable usage on MSVC */
 #endif
@@ -28,9 +11,7 @@
 #include <chrono>
 #include <thread>
 
-/* ------------------------------------------------------------------ */
 /* Constants                                                          */
-/* ------------------------------------------------------------------ */
 
 #define FIELDS_PER_ROW      10
 #define NUMBER_TEXT_SIZE    32      /* text buffer for one numeric parameter */
@@ -167,14 +148,11 @@ static int query_single_int(PGconn* conn, const char* sql, const char* context, 
     return code;
 }
 
-/* A fatal error makes the rest of the load pointless */
 static int is_fatal(int code) {
     return (code == DB_ERR_CONNECTION || code == DB_ERR_SCHEMA || code == DB_ERR_MEMORY);
 }
 
-/* ------------------------------------------------------------------ */
 /* Connection                                                         */
-/* ------------------------------------------------------------------ */
 
 void db_build_conninfo(char* buffer, int buffer_size) {
     snprintf(buffer, (size_t)buffer_size,
@@ -249,9 +227,7 @@ void db_disconnect(PGconn* conn) {
     }
 }
 
-/* ------------------------------------------------------------------ */
 /* Schema check                                                       */
-/* ------------------------------------------------------------------ */
 
 int db_check_schema(PGconn* conn) {
     int found_columns = 0;
@@ -341,9 +317,7 @@ static const char* validate_record(const InventoryRecord* record) {
     return reason;
 }
 
-/* ------------------------------------------------------------------ */
 /* Bulk INSERT                                                        */
-/* ------------------------------------------------------------------ */
 
 static int buffers_create(InsertBuffers* buffers, int batch_size) {
     int code = DB_OK;
@@ -561,9 +535,7 @@ void db_print_report(const LoadReport* report) {
     printf("=================================\n\n");
 }
 
-/* ------------------------------------------------------------------ */
-/* Staging -> Star Schema                                             */
-/* ------------------------------------------------------------------ */
+/* Staging, Star Schema                                             */
 
 struct SqlStep {
     const char* name;

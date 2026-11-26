@@ -5,3 +5,5 @@ build/
 # Ignore macOS system files
 .DS_Store
 
+#node modules
+ui/node_modules/

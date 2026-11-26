@@ -7,9 +7,7 @@ int main() {
     int record_count = 0;
     const char* csv_filepath = "inventory-levels.csv";
 
-    printf("==================================================\n");
     printf("Starting C++ ETL Pipeline (Supply Chain Inventory)\n");
-    printf("==================================================\n");
 
     // Phase 1: Extract (Parser Developer's Code)
     InventoryRecord* records = parse_csv(csv_filepath, &record_count);
