@@ -1,83 +1,126 @@
-# C++ ETL Supply Chain Pipeline (warehouseDB)
+# warehouseDB — Supply Chain Inventory Data Warehouse & Analytics Dashboard
 
-A high-performance, memory-safe C++ Data Warehouse pipeline that extracts CSV inventory data, validates it in heap memory, and bulk-loads it into a local PostgreSQL Docker instance via `libpq`. 
+A full-stack data warehousing and supply chain analytics application built with a **C++ (`libpq`) ETL pipeline**, a **PostgreSQL Star Schema**, and a **Node.js / Express / Chart.js** web dashboard—fully containerized with Docker.
 
-## Architecture & Constraints
-This project adheres to strict low-level memory and control flow constraints:
-- **No Standard Template Library:** `std::vector` is prohibited. All dynamic arrays use `malloc` and `realloc`.
-- **No Boolean Types:** Standard `int` flags (1 or 0) are used for all logic gates.
-- **Restricted Control Flow:** The `break` and `continue` keywords are prohibited. Loop state is managed strictly via integer flags.
-- **Star Schema:** Data lands in `staging_inventory` and is transformed into `dim_date`, `dim_product`, `dim_warehouse`, and `fact_inventory` via PostgreSQL stored procedures.
+---
 
-## 1. Prerequisites
-Ensure the following dependencies are installed on your system:
-- **Docker Desktop** (or Docker Engine) running in the background.
-- **CMake** (Version 3.10+)
-- **C++ Compiler** (C++17 standard support)
-- **PostgreSQL C Library (`libpq`)**:
-  - **macOS:** `brew install libpq`
-  - **Arch Linux:** `sudo pacman -S postgresql-libs`
-  - **Ubuntu/Debian:** `sudo apt-get install libpq-dev`
-  - **Windows:** Use the official PostgreSQL installer or `vcpkg`.
+## Features
 
-## 2. Environment Setup
-Clone the repository and boot the Docker container. The initialization script (`schema/01_init.sql`) will automatically execute to build the database tables.
+- **C++ ETL Pipeline:** Parses supply chain CSV datasets, validates rows, bulk-inserts into `staging_inventory`, and idempotently populates Star Schema dimensions (`dim_date`, `dim_product`, `dim_warehouse`) and fact tables (`fact_inventory`).
+- **Dynamic CSV Upload:** Upload any compatible 10-column CSV directly from the browser to trigger the C++ ETL binary and refresh the warehouse on the fly.
+- **Interactive Analytics Dashboard:**
+  - Live KPI cards (Fact Records, Unique Products, Warehouses, Total Stock Value, Below Reorder Alerts).
+  - Stock Value by Warehouse bar chart (Chart.js).
+  - Multi-column filtering and sorting by SKU, Category, Warehouse, Date range, Stock range, Reorder Point, Stock Value, and Reorder status.
+  - Live terminal log output from the C++ ETL execution directly in the UI.
+- **Production-Ready Infrastructure:** Environment variable management via `.env` and one-command deployment using Docker Compose.
 
-```bash
-git clone https://github.com/TIKYIKHANT-hyper/warehouseDB.git
-cd warehouseDB
+---
 
-# Boot the PostgreSQL database
-docker compose up -d
+## Project Structure
+
+```text
+warehouseDB/
+├── CMakeLists.txt          # CMake build configuration for the C++ ETL binary
+├── main.cpp                # ETL entry point (accepts optional CSV path argument)
+├── parser.cpp / parser.h   # CSV extraction and heap-allocated record parser
+├── database.cpp / .h       # libpq connection, bulk staging load, and Star Schema transform
+├── schema/                 # PostgreSQL DDL scripts (auto-loaded on container init)
+├── datasets/               # Additional supply chain datasets
+├── inventory-levels.csv    # Default CSV dataset
+├── ui/
+│   ├── server.js           # Express API server, multer CSV upload, and C++ process runner
+│   ├── package.json        # Node.js dependencies
+│   └── public/
+│       └── index.html      # Dashboard UI (HTML/CSS/JS + Chart.js)
+├── Dockerfile              # Multi-runtime container (C++ build tools + Node.js)
+├── docker-compose.yml      # Orchestrates PostgreSQL (db) and Dashboard/ETL (app)
+├── .env.example            # Template for environment variables
+└── .dockerignore
 ```
 
-## 3. Build Instructions
-Use CMake to generate the build files and compile the executable. 
+---
 
-**For Linux / Windows:**
+## Quick Start (Docker — Recommended)
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/TIKYIKHANT-hyper/warehouseDB.git
+   cd warehouseDB
+   ```
+
+2. **Configure environment variables:**
+   Copy the example file and set your PostgreSQL password:
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env`:
+   ```env
+   DB_HOST=127.0.0.1
+   DB_PORT=5432
+   DB_NAME=MyfirstDW
+   DB_USER=postgres
+   DB_PASSWORD=your_secure_password
+   ```
+
+3. **Build and start the stack:**
+   ```bash
+   docker compose up --build -d
+   ```
+
+4. **Open the dashboard:**
+   Navigate to **`http://localhost:3000`** in your browser and click **▶ Run Default ETL** (or upload a custom CSV) to populate the warehouse.
+
+To view application logs:
 ```bash
-cmake -B build
-cmake --build build
+docker compose logs -f app
 ```
 
-**For macOS (Homebrew Users):**
-Homebrew intentionally hides `libpq` to prevent global conflicts. You must explicitly pass the Homebrew path to CMake:
-```bash
-cmake -B build -DPostgreSQL_ROOT=$(brew --prefix libpq)
-cmake --build build
-```
+---
 
-## 4. Testing Cases & Expected Outcomes
-Run the compiled pipeline using `./build/warehouseDB`. Verify the following test scenarios to ensure your local environment is functioning correctly.
+## Local Development (Manual Build)
 
-### Test Case 1: Docker Database Binding
-- **Action:** Run `docker compose up -d`.
-- **Expected:** Container boots successfully. 
-- **Troubleshooting:** If you receive a `bind: address already in use` error on port 5432, a local PostgreSQL process is blocking Docker. 
-  - On macOS/Linux, find the PID with `sudo lsof -i :5432` and terminate it using `sudo kill -9 <PID>`, then retry.
+If you prefer running the C++ binary and Node.js server natively while keeping PostgreSQL in Docker:
 
-### Test Case 2: C++ Heap Memory Allocation
-- **Action:** Execute the `./build/warehouseDB` pipeline.
-- **Expected:** The console outputs `[SUCCESS] Parsed 908 rows into dynamic heap memory.`
-- **Troubleshooting:** If parsing fails, ensure `inventory-levels.csv` is located in the correct execution directory and is not locked by another application.
+1. **Start PostgreSQL only:**
+   ```bash
+   docker compose up -d db
+   ```
 
-### Test Case 3: Data Validation & Rejection
-- **Action:** Review the `LOAD REPORT` in the console output.
-- **Expected:** The system must report `records from parser: 908`, `rejected (invalid): 1`, and `inserted: 907`. 
-- **Validation:** Row 908 should be explicitly rejected by the C++ validation layer prior to server transmission due to an "invalid warehouse" flag.
+2. **Compile the C++ ETL pipeline:**
+   ```bash
+   cmake -B build
+   cmake --build build
+   ```
+   > **macOS note:** If CMake cannot locate `libpq`, specify your PostgreSQL installation path:
+   > ```bash
+   > cmake -B build -DPostgreSQL_ROOT=/Library/PostgreSQL/18
+   > cmake --build build
+   > ```
 
-### Test Case 4: Star Schema Transformation
-- **Action:** Open pgAdmin (or your preferred database IDE) and connect to `127.0.0.1:5432` (User: `postgres`, DB: `MyfirstDW`).
-- **Expected:** The `staging -> star schema` log should match the database row counts perfectly:
-  - `dim_date`: 341 rows
-  - `dim_product`: 284 rows
-  - `dim_warehouse`: 5 rows
-  - `fact_inventory`: 907 rows
+3. **Run the C++ ETL from the terminal (optional):**
+   ```bash
+   ./build/warehouseDB                        # Uses inventory-levels.csv
+   ./build/warehouseDB path/to/custom.csv     # Uses a custom CSV file
+   ```
 
-## Resetting the Database Environment
-If updates are made to the `schema/01_init.sql` file, you must destroy the old Docker volume so PostgreSQL is forced to rebuild the tables from scratch.
+4. **Start the Web UI:**
+   ```bash
+   cd ui
+   npm install
+   node server.js
+   ```
+   Open **`http://localhost:3000`**.
 
-```bash
-docker compose down -v
-docker compose up -d
-```
+---
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/summary` | Returns KPI totals (records, products, warehouses, stock value, reorder alerts). |
+| `GET` | `/api/warehouses` | Returns aggregated stock value and units grouped by warehouse. |
+| `GET` | `/api/filters` | Returns distinct categories and warehouse codes for UI dropdowns. |
+| `GET` | `/api/inventory` | Returns filtered and sorted joined Star Schema records (`sku`, `category`, `warehouse`, `dateFrom`, `dateTo`, `minStock`, `maxStock`, `minReorder`, `minValue`, `alertsOnly`, `sortBy`, `sortDir`). |
+| `POST` | `/api/run-etl` | Executes `./build/warehouseDB` on the default `inventory-levels.csv` and returns stdout/stderr. |
+| `POST` | `/api/upload-etl` | Accepts a multipart `csvFile` upload, runs `./build/warehouseDB <file>`, and cleans up the temp file. |
